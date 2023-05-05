@@ -1,0 +1,152 @@
+#!/bin/bash
+
+preg_quote()
+{
+    escaped="$1"
+
+    # escape all backslashes first
+    escaped="${escaped//\\/\\\\}"
+
+    # escape slashes
+    escaped="${escaped//\//\\/}"
+
+    # escape asterisks
+    escaped="${escaped//\*/\\*}"
+
+    # escape full stops
+    escaped="${escaped//./\\.}"
+
+    # escape [ and ]
+    escaped="${escaped//\[/\\[}"
+    escaped="${escaped//\]/\\]}"
+
+    # escape especial chars: ^ $ &
+    escaped="${escaped//^/\\^}"
+    escaped="${escaped//\$/\\\$}"
+    escaped="${escaped//&/\\&}"
+
+    # escape newlines
+    escaped="${escaped//[$'\n']/\\n}"
+
+    echo "$escaped"
+}
+
+#######################################
+# Execute and print command
+# Arguments:
+#  @ command statement
+#######################################
+function try() {
+  echo "run: $(printf '"%s" ' "${@}")"
+  "${@}"
+}
+
+#######################################
+# Execute and print command from URL
+# Arguments:
+#  1 script URL
+#  @ script parameters
+#######################################
+function try.from() {
+  # shellcheck disable=SC2145
+  echo "run: curl $1 | bash -s -- ${@:2}"
+  curl "$1" | bash -s -- "${@:2}"
+}
+
+#######################################
+# Print message and exit
+# Arguments:
+#   1 message
+#   2 code
+#######################################
+function throw() {
+  echo "${1:-}"
+  exit "${2:-1}"
+}
+
+#######################################
+# Capture fail status of  before execution and execute a new command statement
+# Arguments:
+#  @ command statement
+#######################################
+function catch() {
+  if [[ $? -ne 0 ]]; then
+    "$@"
+  fi
+}
+
+
+
+#######################################
+# Generate environment file with environment variable matches in a template
+# Arguments:
+#   1 file to generate
+#   2 template
+#   3 data source environment variable name pattern
+#######################################
+function azure::make::env() {
+  local key
+  local hash
+  local script
+  local new_key
+  local matches
+  local temporal
+  local target=${1:-.env}
+  local template=${2:-.env.example}
+  # shellcheck disable=SC2016
+  local var_pattern=${3:-'$%s'}
+
+  hash=$(date +"%N")
+  script=.env.${hash}.sh
+  matches=.env.temporal
+  temporal=.env.azure.sh
+
+  grep -Po '^(#*\w+)=' "${template}" > ${matches}
+
+  # Region - Generate file script
+  echo "#!/usr/bin/env bash" > "${script}"
+  echo "cat <<EOF > ${temporal}" >> "${script}"
+
+  while IFS='=' read -r key; do
+      key=${key//=/}
+      if echo "$key" | grep -q "^#"; then
+          key=${key//#/}
+      fi
+
+      # shellcheck disable=SC2059
+      new_key=$(printf "${var_pattern}" "${key}")
+
+      echo "${key}=${new_key}" >> "${script}"
+  done < ${matches}
+
+  echo "EOF" >> "${script}"
+  # EndRegion - Generate file script
+
+  sh "${script}"
+  sed '/[A-Za-z_]=$/d' ${temporal} > "${target}"
+  rm ${matches} "${script}" ${temporal}
+}
+
+#######################################
+# Generate file from stub
+# Arguments:
+#   1 template
+#   2 filename
+#######################################
+function azure::make::stub() {
+  local key
+  local new_key
+  local filename
+  local template
+
+  filename="$2"
+  template="$1"
+
+  cp "${template}" "${filename}"
+
+  while IFS= read -r key; do
+    new_key=$(printf '%s' "${key}")
+    sed -i "s/{{\s*$key\s*}}/$(preg_quote "${!new_key}")/g" "${filename}"
+  done < <(grep -oP '{{\s*\K([A-Za-z0-9_]+)(?=\s*}})' < "${template}")
+}
+
