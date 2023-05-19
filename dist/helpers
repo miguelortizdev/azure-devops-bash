@@ -143,9 +143,10 @@ function azure::make::stub() {
   template="$1"
 
   cp "${template}" "${filename}"
-
+  echo "Validar: ++ ${23_HW_CONTEXT} ++"
   while IFS= read -r key; do
     new_key=$(printf '%s' "${key}")
+    echo "${new_key} ++ ${!new_key} ++"
     sed -i "s/{{\s*$key\s*}}/$(preg_quote "${!new_key}")/g" "${filename}"
   done < <(grep -oP '{{\s*\K([A-Za-z0-9_]+)(?=\s*}})' < "${template}")
 }
